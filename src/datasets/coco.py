@@ -10,6 +10,7 @@ from torch.utils.data import Dataset
 from torchvision.datasets import CocoCaptions
 from transformers import AutoImageProcessor, AutoTokenizer
 
+
 from .base import BaseRetrievalDataset
 
 
@@ -34,6 +35,7 @@ class CocoHashingDataset(BaseRetrievalDataset):
         max_length: int = 32,
         random_caption: bool = True,
         image_cache_dir: str | Path | None = None,
+
     ) -> None:
         self.img_root = Path(img_root)
         self.ann_file = Path(ann_file)
@@ -71,6 +73,7 @@ class CocoHashingDataset(BaseRetrievalDataset):
         image_id = self.dataset.ids[index]
         sample = {
             "pixel_values": processed.pixel_values.squeeze(0),
+
             "input_ids": tokenized.input_ids.squeeze(0),
             "attention_mask": tokenized.attention_mask.squeeze(0),
             "label": torch.tensor(image_id, dtype=torch.long),

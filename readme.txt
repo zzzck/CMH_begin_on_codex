@@ -28,11 +28,13 @@ Outputs are saved under `checkpoints/`. The command falls back to CPU automatica
 
 ## Extending to other datasets
 
+
 Implement a subclass of `BaseRetrievalDataset` in `src/datasets` that returns the same keys as the COCO version (`pixel_values`, `input_ids`, `attention_mask`, `label`) and register it inside `build_dataset`.
 
 ## Model overview
 
 * **Image encoder**: Vision Transformer backbone from Hugging Face followed by a projection to hash logits.
+
 * **Text encoder**: Transformer encoder (default DistilBERT) projected to hash logits.
 * **Hashing**: `tanh` relaxation during training; `sign` for inference-ready binary codes.
 * **Loss**: Binary cross-entropy over the pairwise similarity matrix with a quantization regularizer pushing codes toward ±1.

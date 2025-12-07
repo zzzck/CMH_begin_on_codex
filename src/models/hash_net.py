@@ -34,6 +34,7 @@ class ImageEncoder(nn.Module):
         outputs = self.vision_model(pixel_values=pixel_values)
         pooled = outputs.last_hidden_state[:, 0]
         logits = self.proj(pooled)
+
         return logits
 
 

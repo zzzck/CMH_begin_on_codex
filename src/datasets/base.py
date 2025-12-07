@@ -18,7 +18,9 @@ class BaseRetrievalDataset(Dataset, ABC):
 
     @abstractmethod
     def __getitem__(self, index: int) -> Dict[str, Any]:
+
         """Return a dictionary with keys: pixel_values, input_ids, attention_mask, label."""
+
         raise NotImplementedError
 
     @abstractmethod
