@@ -7,9 +7,9 @@ from typing import Dict, Optional
 
 import torch
 from torch.utils.data import Dataset
-from torchvision import transforms
 from torchvision.datasets import CocoCaptions
-from transformers import AutoTokenizer
+from transformers import AutoImageProcessor, AutoTokenizer
+
 
 from .base import BaseRetrievalDataset
 
@@ -31,9 +31,11 @@ class CocoHashingDataset(BaseRetrievalDataset):
         img_root: str | Path,
         ann_file: str | Path,
         tokenizer_name: str = "distilbert-base-uncased",
+        image_processor_name: str = "google/vit-base-patch16-224-in21k",
         max_length: int = 32,
         random_caption: bool = True,
-        image_size: int = 224,
+        image_cache_dir: str | Path | None = None,
+
     ) -> None:
         self.img_root = Path(img_root)
         self.ann_file = Path(ann_file)
@@ -42,23 +44,14 @@ class CocoHashingDataset(BaseRetrievalDataset):
         self.dataset: Dataset = CocoCaptions(
             root=str(self.img_root),
             annFile=str(self.ann_file),
-            transform=self._image_transform(image_size),
+            transform=None,
             target_transform=None,
         )
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
-        self.max_length = max_length
-
-    @staticmethod
-    def _image_transform(image_size: int) -> transforms.Compose:
-        return transforms.Compose(
-            [
-                transforms.Resize((image_size, image_size)),
-                transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                ),
-            ]
+        self.image_processor = AutoImageProcessor.from_pretrained(
+            image_processor_name, cache_dir=image_cache_dir
         )
+        self.max_length = max_length
 
     def _pick_caption(self, captions: list[str]) -> str:
         if self.random_caption:
@@ -75,10 +68,12 @@ class CocoHashingDataset(BaseRetrievalDataset):
             truncation=True,
             return_tensors="pt",
         )
+        processed = self.image_processor(images=image, return_tensors="pt")
         # CocoCaptions returns annotation ids as index; map to image id via dataset.ids
         image_id = self.dataset.ids[index]
         sample = {
-            "image": image,
+            "pixel_values": processed.pixel_values.squeeze(0),
+
             "input_ids": tokenized.input_ids.squeeze(0),
             "attention_mask": tokenized.attention_mask.squeeze(0),
             "label": torch.tensor(image_id, dtype=torch.long),

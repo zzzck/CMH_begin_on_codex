@@ -24,13 +24,30 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=1, help="Number of epochs")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--max-length", type=int, default=32, help="Max caption tokens")
-    parser.add_argument("--image-size", type=int, default=224, help="Image resolution")
     parser.add_argument("--device", type=str, default="cuda", help="Training device")
+    parser.add_argument(
+        "--image-model",
+        type=str,
+        default="google/vit-base-patch16-224-in21k",
+        help="Hugging Face vision model name for the image encoder",
+    )
     parser.add_argument(
         "--text-model",
         type=str,
         default="distilbert-base-uncased",
         help="HuggingFace model name for text encoder",
+    )
+    parser.add_argument(
+        "--image-cache",
+        type=str,
+        default=None,
+        help="Directory to cache Hugging Face vision weights (prevents repeated downloads)",
+    )
+    parser.add_argument(
+        "--hf-cache",
+        type=str,
+        default=None,
+        help="Directory to cache Hugging Face model weights",
     )
     return parser.parse_args()
 
@@ -42,7 +59,8 @@ def create_dataloader(args: argparse.Namespace) -> DataLoader:
         ann_file=args.ann_file,
         tokenizer_name=args.text_model,
         max_length=args.max_length,
-        image_size=args.image_size,
+        image_processor_name=args.image_model,
+        image_cache_dir=args.image_cache,
     )
     return DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True)
 
@@ -53,13 +71,15 @@ def train_one_epoch(
     model.train()
     epoch_loss = 0.0
     for batch in tqdm(loader, desc="train"):
-        images = batch["image"].to(device)
+        pixel_values = batch["pixel_values"].to(device)
         input_ids = batch["input_ids"].to(device)
         attention_mask = batch["attention_mask"].to(device)
         labels = batch["label"].to(device)
 
         optimizer.zero_grad()
-        outputs = model(images=images, input_ids=input_ids, attention_mask=attention_mask)
+        outputs = model(
+            pixel_values=pixel_values, input_ids=input_ids, attention_mask=attention_mask
+        )
         loss = cross_modal_hashing_loss(outputs.image_codes, outputs.text_codes, labels, labels)
         loss.backward()
         optimizer.step()
@@ -72,7 +92,13 @@ def main() -> None:
     args = parse_args()
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
-    model = HashingModel(bits=args.bits, text_model=args.text_model).to(device)
+    model = HashingModel(
+        bits=args.bits,
+        text_model=args.text_model,
+        image_model=args.image_model,
+        image_cache_dir=args.image_cache,
+        text_cache_dir=args.hf_cache,
+    ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
     loader = create_dataloader(args)

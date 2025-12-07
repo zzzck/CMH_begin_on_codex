@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict
 
 import torch
@@ -18,27 +19,34 @@ class HashingOutputs:
 
 
 class ImageEncoder(nn.Module):
-    def __init__(self, bits: int, hidden_dim: int = 512) -> None:
+    def __init__(
+        self,
+        bits: int,
+        vision_model: str = "google/vit-base-patch16-224-in21k",
+        cache_dir: str | Path | None = None,
+    ) -> None:
         super().__init__()
-        backbone = torch.hub.load("pytorch/vision:v0.14.0", "resnet50", pretrained=True)
-        backbone.fc = nn.Identity()
-        self.backbone = backbone
-        self.proj = nn.Sequential(
-            nn.Linear(2048, hidden_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(hidden_dim, bits),
-        )
+        self.vision_model = AutoModel.from_pretrained(vision_model, cache_dir=cache_dir)
+        hidden_size = self.vision_model.config.hidden_size
+        self.proj = nn.Linear(hidden_size, bits)
 
-    def forward(self, images: torch.Tensor) -> torch.Tensor:
-        feats = self.backbone(images)
-        logits = self.proj(feats)
+    def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
+        outputs = self.vision_model(pixel_values=pixel_values)
+        pooled = outputs.last_hidden_state[:, 0]
+        logits = self.proj(pooled)
+
         return logits
 
 
 class TextEncoder(nn.Module):
-    def __init__(self, bits: int, model_name: str = "distilbert-base-uncased") -> None:
+    def __init__(
+        self,
+        bits: int,
+        model_name: str = "distilbert-base-uncased",
+        cache_dir: str | Path | None = None,
+    ) -> None:
         super().__init__()
-        self.transformer = AutoModel.from_pretrained(model_name)
+        self.transformer = AutoModel.from_pretrained(model_name, cache_dir=cache_dir)
         hidden_size = self.transformer.config.hidden_size
         self.proj = nn.Linear(hidden_size, bits)
 
@@ -52,18 +60,29 @@ class TextEncoder(nn.Module):
 class HashingModel(nn.Module):
     """Encodes images and text into continuous hash logits and relaxed hash codes."""
 
-    def __init__(self, bits: int = 32, text_model: str = "distilbert-base-uncased") -> None:
+    def __init__(
+        self,
+        bits: int = 32,
+        text_model: str = "distilbert-base-uncased",
+        image_model: str = "google/vit-base-patch16-224-in21k",
+        image_cache_dir: str | Path | None = None,
+        text_cache_dir: str | Path | None = None,
+    ) -> None:
         super().__init__()
-        self.image_encoder = ImageEncoder(bits=bits)
-        self.text_encoder = TextEncoder(bits=bits, model_name=text_model)
+        self.image_encoder = ImageEncoder(
+            bits=bits, vision_model=image_model, cache_dir=image_cache_dir
+        )
+        self.text_encoder = TextEncoder(
+            bits=bits, model_name=text_model, cache_dir=text_cache_dir
+        )
 
     def forward(
         self,
-        images: torch.Tensor,
+        pixel_values: torch.Tensor,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
     ) -> HashingOutputs:
-        image_logits = self.image_encoder(images)
+        image_logits = self.image_encoder(pixel_values=pixel_values)
         text_logits = self.text_encoder(input_ids=input_ids, attention_mask=attention_mask)
 
         # Continuous relaxation of sign to enable backpropagation
@@ -78,8 +97,8 @@ class HashingModel(nn.Module):
         )
 
     @torch.inference_mode()
-    def encode_image(self, images: torch.Tensor) -> torch.Tensor:
-        return torch.sign(torch.tanh(self.image_encoder(images)))
+    def encode_image(self, pixel_values: torch.Tensor) -> torch.Tensor:
+        return torch.sign(torch.tanh(self.image_encoder(pixel_values)))
 
     @torch.inference_mode()
     def encode_text(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
