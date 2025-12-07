@@ -15,8 +15,8 @@ Download COCO images and captions annotations, then run:
 ```bash
 python -m src.train \
   --dataset coco \
-  --img-root /path/to/train2017 \
-  --ann-file /path/to/annotations/captions_train2017.json \
+  --img-root /data2/zhangchaoke/PythonProject/MyCMH/datasets/train2014 \
+  --ann-file /data2/zhangchaoke/PythonProject/MyCMH/datasets/annotations/captions_train2014.json \
   --bits 32 \
   --batch-size 32 \
   --epochs 5 \
